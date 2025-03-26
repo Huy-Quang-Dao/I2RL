@@ -51,7 +51,7 @@ class DQN():
         self.discount_factor_g = 0.9         # discount rate (gamma)    
         self.network_sync_rate = 100          # number of steps the agent takes before syncing the policy and target network
         self.replay_memory_size = 2000       # size of replay memory
-        self.mini_batch_size = 128           # size of the training data set sampled from the replay memory
+        self.mini_batch_size = 32           # size of the training data set sampled from the replay memory
 
         # Neural Network
         self.loss_fn = nn.MSELoss()          # NN Loss function. MSE=Mean Squared Error can be swapped to something else.
@@ -65,7 +65,7 @@ class DQN():
     def train(self, episodes, render=False):
         # Create FrozenLake instance
         env = gym.make('CartPole-v1', render_mode='human' if render else None)
-        env = env.unwrapped
+        # env = env.unwrapped
         num_states = env.observation_space.shape[0]
         num_actions = env.action_space.n
         
@@ -133,7 +133,8 @@ class DQN():
                 self.optimize(mini_batch, policy_dqn, target_dqn)        
 
                 # Decay epsilon
-                epsilon = max(epsilon - 1/episodes, 0)
+                # epsilon = max(epsilon - 1/episodes, 0)
+                epsilon = epsilon
                 epsilon_history.append(epsilon)
 
                 # Copy policy network to target network after a certain number of steps
@@ -145,7 +146,7 @@ class DQN():
         env.close()
 
         # Save policy
-        torch.save(policy_dqn.state_dict(), "cartpole_dql.pt")
+        torch.save(policy_dqn.state_dict(), "DQN\\cartpole_dql.pt")
 
         # Create new graph 
         plt.figure(1)
@@ -162,7 +163,7 @@ class DQN():
         plt.plot(epsilon_history)
         
         # Save plots
-        plt.savefig('carpole_dql.png')
+        plt.savefig("DQN\\carpole_dql.png")
 
     # Optimize policy network
     def optimize(self, mini_batch, policy_dqn, target_dqn):
@@ -219,7 +220,7 @@ class DQN():
 
         # Load learned policy
         policy_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
-        policy_dqn.load_state_dict(torch.load("cartpole_dql.pt"))
+        policy_dqn.load_state_dict(torch.load("DQN\\cartpole_dql.pt"))
         policy_dqn.eval()    # switch model to evaluation mode
 
         print('Policy (trained):')
@@ -281,7 +282,7 @@ if __name__ == '__main__':
 
     # Load learned policy
     policy_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
-    policy_dqn.load_state_dict(torch.load("cartpole_dql.pt"))
+    policy_dqn.load_state_dict(torch.load("DQN\\cartpole_dql.pt"))
     policy_dqn.eval()    # switch model to evaluation mode
 
     state = env.reset()[0]

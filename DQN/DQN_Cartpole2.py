@@ -11,15 +11,20 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # Define model
 class Net(nn.Module):
-    def __init__(self, in_states, h1_nodes, out_actions):
+    def __init__(self, in_states, h1_nodes,h2_nodes, out_actions):
         super().__init__()
 
         # Define network layers
         self.fc1 = nn.Linear(in_states, h1_nodes)   # first fully connected layer
-        self.out = nn.Linear(h1_nodes, out_actions) # ouptut layer w
+        self.fc1.weight.data.normal_(0,0.1)
+        self.fc2 = nn.Linear(h1_nodes,h2_nodes)
+        self.fc2.weight.data.normal_(0,0.1)
+        self.out = nn.Linear(h2_nodes, out_actions) # ouptut layer w
+        self.out.weight.data.normal_(0,0.1)
 
     def forward(self, x):
         x = F.relu(self.fc1(x)) # Apply rectified linear unit (ReLU) activation
+        x = F.relu(self.fc2(x))
         x = self.out(x)         # Calculate output
         return x
     
@@ -39,32 +44,37 @@ class ReplayMemory():
     
 # FrozeLake Deep Q-Learning
 class DQN():
-    # Hyperparameters (adjustable)
-    learning_rate_a = 0.001         # learning rate (alpha)
-    discount_factor_g = 0.9         # discount rate (gamma)    
-    network_sync_rate = 10          # number of steps the agent takes before syncing the policy and target network
-    replay_memory_size = 1000       # size of replay memory
-    mini_batch_size = 32            # size of the training data set sampled from the replay memory
+    def __init__(self):
+        super(DQN, self).__init__()
+        # Hyperparameters (adjustable)
+        self.learning_rate_a = 0.01         # learning rate (alpha)
+        self.discount_factor_g = 0.9         # discount rate (gamma)    
+        self.network_sync_rate = 100          # number of steps the agent takes before syncing the policy and target network
+        self.replay_memory_size = 2000       # size of replay memory
+        self.mini_batch_size = 32           # size of the training data set sampled from the replay memory
 
-    # Neural Network
-    loss_fn = nn.MSELoss()          # NN Loss function. MSE=Mean Squared Error can be swapped to something else.
-    optimizer = None                # NN Optimizer. Initialize later.
+        # Neural Network
+        self.loss_fn = nn.MSELoss()          # NN Loss function. MSE=Mean Squared Error can be swapped to something else.
+        self.optimizer = None                # NN Optimizer. Initialize later.
 
-    ACTIONS = ['L','D','R','U']     # for printing 0,1,2,3 => L(eft),D(own),R(ight),U(p)
+        self.ACTIONS = ['L','R']     # for printing 0,1 => L(eft),R(ight)
+
+
 
     # Train the FrozeLake environment
-    def train(self, episodes, render=False, is_slippery=False):
+    def train(self, episodes, render=False):
         # Create FrozenLake instance
-        env = gym.make('FrozenLake-v1', map_name="4x4", is_slippery=is_slippery, render_mode='human' if render else None)
-        num_states = env.observation_space.n
+        env = gym.make('CartPole-v1', render_mode='human' if render else None)
+        # env = env.unwrapped
+        num_states = env.observation_space.shape[0]
         num_actions = env.action_space.n
         
         epsilon = 1 # 1 = 100% random actions
         memory = ReplayMemory(self.replay_memory_size)
 
         # Create policy and target network. Number of nodes in the hidden layer can be adjusted.
-        policy_dqn = Net(in_states=num_states, h1_nodes=num_states, out_actions=num_actions)
-        target_dqn = Net(in_states=num_states, h1_nodes=num_states, out_actions=num_actions)
+        policy_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
+        target_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
 
         # Make the target and policy networks the same (copy weights/biases from one network to the other)
         target_dqn.load_state_dict(policy_dqn.state_dict())
@@ -95,7 +105,7 @@ class DQN():
                 # Select action based on epsilon-greedy
                 if random.random() < epsilon:
                     # select random action
-                    action = env.action_space.sample() # actions: 0=left,1=down,2=right,3=up
+                    action = env.action_space.sample() # actions: 0=left,1=right
                 else:
                     # select best action            
                     with torch.no_grad():
@@ -123,7 +133,8 @@ class DQN():
                 self.optimize(mini_batch, policy_dqn, target_dqn)        
 
                 # Decay epsilon
-                epsilon = max(epsilon - 1/episodes, 0)
+                # epsilon = max(epsilon - 1/episodes, 0)
+                epsilon = epsilon
                 epsilon_history.append(epsilon)
 
                 # Copy policy network to target network after a certain number of steps
@@ -135,7 +146,7 @@ class DQN():
         env.close()
 
         # Save policy
-        torch.save(policy_dqn.state_dict(), "DQN\\frozen_lake_ddql.pt")
+        torch.save(policy_dqn.state_dict(), "DQN\\cartpole_dql2.pt")
 
         # Create new graph 
         plt.figure(1)
@@ -152,7 +163,7 @@ class DQN():
         plt.plot(epsilon_history)
         
         # Save plots
-        plt.savefig("DQN\\frozen_lake_ddql.png")
+        plt.savefig("DQN\\cartpole_dql2.png")
 
     # Optimize policy network
     def optimize(self, mini_batch, policy_dqn, target_dqn):
@@ -172,9 +183,8 @@ class DQN():
             else:
                 # Calculate target q value 
                 with torch.no_grad():
-                    best_action = policy_dqn(self.state_to_dqn_input(new_state, num_states)).argmax()
                     target = torch.FloatTensor(
-                        reward + self.discount_factor_g * target_dqn(self.state_to_dqn_input(new_state, num_states))[best_action]
+                        reward + self.discount_factor_g * target_dqn(self.state_to_dqn_input(new_state, num_states)).max()
                     )
 
             # Get the current set of Q values
@@ -195,28 +205,24 @@ class DQN():
         loss.backward()
         self.optimizer.step()
 
-    '''
-    Converts an state (int) to a tensor representation.
-    For example, the FrozenLake 4x4 map has 4x4=16 states numbered from 0 to 15. 
 
-    Parameters: state=1, num_states=16
-    Return: tensor([0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-    '''
     def state_to_dqn_input(self, state:int, num_states:int)->torch.Tensor:
         input_tensor = torch.zeros(num_states)
         input_tensor[state] = 1
         return input_tensor
+    
+      
 
     # Run the FrozeLake environment with the learned policy
-    def test(self, episodes, is_slippery=False):
+    def test(self, episodes,render=True, is_slippery=False):
         # Create FrozenLake instance
-        env = gym.make('FrozenLake-v1', map_name="4x4", is_slippery=is_slippery, render_mode='human')
-        num_states = env.observation_space.n
+        env = gym.make('CartPole-v1', render_mode='human' if render else None)
+        num_states = env.observation_space.shape[0]
         num_actions = env.action_space.n
 
         # Load learned policy
-        policy_dqn = Net(in_states=num_states, h1_nodes=num_states, out_actions=num_actions) 
-        policy_dqn.load_state_dict(torch.load("DQN\\frozen_lake_ddql.pt"))
+        policy_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
+        policy_dqn.load_state_dict(torch.load("DQN\\cartpole_dql2.pt"))
         policy_dqn.eval()    # switch model to evaluation mode
 
         print('Policy (trained):')
@@ -234,7 +240,14 @@ class DQN():
                     action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
 
                 # Execute action
-                state,reward,terminated,truncated,_ = env.step(action)
+                state,_,terminated,truncated,_ = env.step(action)
+        # state = env.reset()[0]
+        # for _ in range(200):
+        #     env.render()  
+        #     with torch.no_grad():
+        #         action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
+        #     state, reward, done, _, _ = env.step(action)
+
 
         env.close()
 
@@ -262,7 +275,25 @@ class DQN():
 
 
 if __name__ == '__main__':
-    frozen_lake = DQN()
-    is_slippery = False
-    # frozen_lake.train(1000, is_slippery=is_slippery)
-    frozen_lake.test(2, is_slippery=is_slippery)
+    cartpole = DQN()
+    cartpole.train(1000)
+    # cartpole.test(1)
+    # env = gym.make('CartPole-v1', render_mode='human')
+    # num_states = env.observation_space.shape[0]
+    # num_actions = env.action_space.n
+
+    # # Load learned policy
+    # policy_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
+    # policy_dqn.load_state_dict(torch.load("DQN\\cartpole_dql2.pt"))
+    # policy_dqn.eval()    # switch model to evaluation mode
+
+    # state = env.reset()[0]
+    # for _ in range(200):
+    #     env.render()  
+    #     with torch.no_grad():
+    #         action = policy_dqn(cartpole.state_to_dqn_input(state, num_states)).argmax().item()
+    #     state, reward, done, _, _ = env.step(action)
+    #     if done:
+    #         # state, _ = env.reset()
+    #         print("end!")
+    #         break
