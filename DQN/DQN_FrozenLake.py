@@ -135,7 +135,7 @@ class DQN():
         env.close()
 
         # Save policy
-        torch.save(policy_dqn.state_dict(), "frozen_lake_dql.pt")
+        torch.save(policy_dqn.state_dict(), "DQN\\frozen_lake_dql.pt")
 
         # Create new graph 
         plt.figure(1)
@@ -152,7 +152,7 @@ class DQN():
         plt.plot(epsilon_history)
         
         # Save plots
-        plt.savefig('frozen_lake_dql.png')
+        plt.savefig("DQN\\frozen_lake_dql.png")
 
     # Optimize policy network
     def optimize(self, mini_batch, policy_dqn, target_dqn):
@@ -215,7 +215,7 @@ class DQN():
 
         # Load learned policy
         policy_dqn = Net(in_states=num_states, h1_nodes=num_states, out_actions=num_actions) 
-        policy_dqn.load_state_dict(torch.load("frozen_lake_dql.pt"))
+        policy_dqn.load_state_dict(torch.load("DQN\\frozen_lake_dql.pt"))
         policy_dqn.eval()    # switch model to evaluation mode
 
         print('Policy (trained):')
@@ -264,4 +264,4 @@ if __name__ == '__main__':
     frozen_lake = DQN()
     is_slippery = False
     # frozen_lake.train(1000, is_slippery=is_slippery)
-    frozen_lake.test(10, is_slippery=is_slippery)
+    frozen_lake.test(1, is_slippery=is_slippery)
