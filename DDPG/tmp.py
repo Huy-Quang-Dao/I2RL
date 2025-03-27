@@ -51,7 +51,7 @@ class DQN():
         self.discount_factor_g = 0.9         # discount rate (gamma)    
         self.network_sync_rate = 100          # number of steps the agent takes before syncing the policy and target network
         self.replay_memory_size = 2000       # size of replay memory
-        self.mini_batch_size = 32           # size of the training data set sampled from the replay memory
+        self.mini_batch_size = 8           # size of the training data set sampled from the replay memory
 
         # Neural Network
         self.loss_fn = nn.MSELoss()          # NN Loss function. MSE=Mean Squared Error can be swapped to something else.
@@ -127,7 +127,8 @@ class DQN():
             # Check if enough experience has been collected and if at least 1 reward has been collected
             if len(memory)>self.mini_batch_size and np.sum(rewards_per_episode)>0:
                 mini_batch = memory.sample(self.mini_batch_size)
-                self.optimize(mini_batch, policy_dqn, target_dqn)        
+                # self.optimize(mini_batch, policy_dqn, target_dqn)  
+                return print(self.optimize(mini_batch, policy_dqn, target_dqn))   
 
                 # Decay epsilon
                 epsilon = max(epsilon - 1/episodes, 0)
@@ -142,25 +143,25 @@ class DQN():
         # Close environment
         env.close()
 
-        # Save policy
-        torch.save(policy_dqn.state_dict(), "DDPG\\cartpole_dql.pt")
+        # # Save policy
+        # torch.save(policy_dqn.state_dict(), "DDPG\\cartpole_dql.pt")
 
-        # Create new graph 
-        plt.figure(1)
+        # # Create new graph 
+        # plt.figure(1)
 
-        # Plot average rewards (Y-axis) vs episodes (X-axis)
-        sum_rewards = np.zeros(episodes)
-        for x in range(episodes):
-            sum_rewards[x] = np.sum(rewards_per_episode[max(0, x-100):(x+1)])
-        plt.subplot(121) # plot on a 1 row x 2 col grid, at cell 1
-        plt.plot(sum_rewards)
+        # # Plot average rewards (Y-axis) vs episodes (X-axis)
+        # sum_rewards = np.zeros(episodes)
+        # for x in range(episodes):
+        #     sum_rewards[x] = np.sum(rewards_per_episode[max(0, x-100):(x+1)])
+        # plt.subplot(121) # plot on a 1 row x 2 col grid, at cell 1
+        # plt.plot(sum_rewards)
         
-        # Plot epsilon decay (Y-axis) vs episodes (X-axis)
-        plt.subplot(122) # plot on a 1 row x 2 col grid, at cell 2
-        plt.plot(epsilon_history)
+        # # Plot epsilon decay (Y-axis) vs episodes (X-axis)
+        # plt.subplot(122) # plot on a 1 row x 2 col grid, at cell 2
+        # plt.plot(epsilon_history)
         
-        # Save plots
-        plt.savefig("DDPG\\cartpole_dql.png")
+        # # Save plots
+        # plt.savefig("DDPG\\cartpole_dql.png")
 
     # Optimize policy network
     def optimize(self, mini_batch, policy_dqn, target_dqn):
@@ -190,9 +191,11 @@ class DQN():
 
             # Get the target set of Q values
             target_q = target_dqn(self.state_to_dqn_input(state, num_states)) 
+
             # Adjust the specific action to the target that was just calculated
             target_q[action] = target
             target_q_list.append(target_q)
+            return target_q
                 
         # Compute loss for the whole minibatch
         loss = self.loss_fn(torch.stack(current_q_list), torch.stack(target_q_list))
@@ -215,7 +218,7 @@ class DQN():
 
         # Load learned policy
         policy_dqn = Net(in_states=num_states, h1_nodes=64,h2_nodes=32, out_actions=num_actions)
-        policy_dqn.load_state_dict(torch.load("DDPG\\cartpole_dql.pt"))
+        # policy_dqn.load_state_dict(torch.load("DDPG\\cartpole_dql.pt"))
         policy_dqn.eval()    # switch model to evaluation mode
 
         state = env.reset()[0]
@@ -235,5 +238,5 @@ class DQN():
 
 if __name__ == '__main__':
     cartpole = DQN()
-    # cartpole.train(1000)
-    cartpole.test(200)
+    cartpole.train(1)
+    # cartpole.test(200)
