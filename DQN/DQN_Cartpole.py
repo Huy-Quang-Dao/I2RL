@@ -73,14 +73,11 @@ class DQN():
         memory = ReplayMemory(self.replay_memory_size)
 
         # Create policy and target network. Number of nodes in the hidden layer can be adjusted.
-        policy_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
-        target_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
+        policy_dqn = Net(in_states=num_states, h1_nodes=64,h2_nodes=32, out_actions=num_actions)
+        target_dqn = Net(in_states=num_states, h1_nodes=64,h2_nodes=32, out_actions=num_actions)
 
         # Make the target and policy networks the same (copy weights/biases from one network to the other)
         target_dqn.load_state_dict(policy_dqn.state_dict())
-
-        print('Policy (random, before training):')
-        self.print_dqn(policy_dqn)
 
         # Policy network optimizer. "Adam" optimizer can be swapped to something else. 
         self.optimizer = torch.optim.Adam(policy_dqn.parameters(), lr=self.learning_rate_a)
@@ -133,7 +130,7 @@ class DQN():
                 self.optimize(mini_batch, policy_dqn, target_dqn)        
 
                 # Decay epsilon
-                # epsilon = max(epsilon - 1/episodes, 0)
+                epsilon = max(epsilon - 1/episodes, 0)
                 epsilon = epsilon
                 epsilon_history.append(epsilon)
 
@@ -163,7 +160,7 @@ class DQN():
         plt.plot(epsilon_history)
         
         # Save plots
-        plt.savefig("DQN\\carpole_dql.png")
+        plt.savefig("DQN\\cartpole_dql.png")
 
     # Optimize policy network
     def optimize(self, mini_batch, policy_dqn, target_dqn):
@@ -207,91 +204,37 @@ class DQN():
 
 
     def state_to_dqn_input(self, state:int, num_states:int)->torch.Tensor:
-        input_tensor = torch.zeros(num_states)
-        input_tensor[state] = 1
-        return input_tensor
+        return torch.tensor(state, dtype=torch.float32).squeeze()
 
     # Run the FrozeLake environment with the learned policy
-    def test(self, episodes,render=True, is_slippery=False):
+    def test(self, episodes,render=True):
         # Create FrozenLake instance
         env = gym.make('CartPole-v1', render_mode='human' if render else None)
         num_states = env.observation_space.shape[0]
         num_actions = env.action_space.n
 
         # Load learned policy
-        policy_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
+        policy_dqn = Net(in_states=num_states, h1_nodes=64,h2_nodes=32, out_actions=num_actions)
         policy_dqn.load_state_dict(torch.load("DQN\\cartpole_dql.pt"))
         policy_dqn.eval()    # switch model to evaluation mode
 
-        print('Policy (trained):')
-        self.print_dqn(policy_dqn)
-
-        for i in range(episodes):
-            state = env.reset()[0]  # Initialize to state 0
-            terminated = False      # True when agent falls in hole or reached goal
-            truncated = False       # True when agent takes more than 200 actions            
-
-            # Agent navigates map until it falls into a hole (terminated), reaches goal (terminated), or has taken 200 actions (truncated).
-            while(not terminated and not truncated):  
-                # Select best action   
-                with torch.no_grad():
-                    action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
-
-                # Execute action
-                state,reward,terminated,truncated,_ = env.step(action)
-        # state = env.reset()[0]
-        # for _ in range(200):
-        #     env.render()  
-        #     with torch.no_grad():
-        #         action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
-        #     state, reward, done, _, _ = env.step(action)
-
+        state = env.reset()[0]
+        for _ in range(episodes):
+            env.render()  
+            with torch.no_grad():
+                action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
+            state, reward, done, _, _ = env.step(action)
+            if done:
+            # state, _ = env.reset()
+                print("end!")
+                break
 
         env.close()
 
-    # Print DQN: state, best action, q values
-    def print_dqn(self, dqn):
-        # Get number of input nodes
-        num_states = dqn.fc1.in_features
-
-        # Loop each state and print policy to console
-        for s in range(num_states):
-            #  Format q values for printing
-            q_values = ''
-            for q in dqn(self.state_to_dqn_input(s, num_states)).tolist():
-                q_values += "{:+.2f}".format(q)+' '  # Concatenate q values, format to 2 decimals
-            q_values=q_values.rstrip()              # Remove space at the end
-
-            # Map the best action to L D R U
-            best_action = self.ACTIONS[dqn(self.state_to_dqn_input(s, num_states)).argmax()]
-
-            # Print policy in the format of: state, action, q values
-            # The printed layout matches the FrozenLake map.
-            print(f'{s:02},{best_action},[{q_values}]', end=' ')         
-            if (s+1)%4==0:
-                print() # Print a newline every 4 states
 
 
 if __name__ == '__main__':
     cartpole = DQN()
-    cartpole.train(1000)
-    # cartpole.test(1)
-    env = gym.make('CartPole-v1', render_mode='human')
-    num_states = env.observation_space.shape[0]
-    num_actions = env.action_space.n
+    # cartpole.train(1000)
+    cartpole.test(200)
 
-    # Load learned policy
-    policy_dqn = Net(in_states=num_states, h1_nodes=50,h2_nodes=30, out_actions=num_actions)
-    policy_dqn.load_state_dict(torch.load("DQN\\cartpole_dql.pt"))
-    policy_dqn.eval()    # switch model to evaluation mode
-
-    state = env.reset()[0]
-    for _ in range(200):
-        env.render()  
-        with torch.no_grad():
-            action = policy_dqn(cartpole.state_to_dqn_input(state, num_states)).argmax().item()
-        state, reward, done, _, _ = env.step(action)
-        if done:
-            # state, _ = env.reset()
-            print("end!")
-            break

@@ -207,7 +207,7 @@ class DQN():
         return torch.tensor(state, dtype=torch.float32).squeeze()
 
     # Run the FrozeLake environment with the learned policy
-    def test(self, episodes,render=True, is_slippery=False):
+    def test(self, episodes,render=True):
         # Create FrozenLake instance
         env = gym.make('CartPole-v1', render_mode='human' if render else None)
         num_states = env.observation_space.shape[0]
@@ -218,29 +218,30 @@ class DQN():
         policy_dqn.load_state_dict(torch.load("DDPG\\cartpole_dql.pt"))
         policy_dqn.eval()    # switch model to evaluation mode
 
-        print('Policy (trained):')
-        self.print_dqn(policy_dqn)
+        # for i in range(episodes):
+        #     state = env.reset()[0]  # Initialize to state 0
+        #     terminated = False      # True when agent falls in hole or reached goal
+        #     truncated = False       # True when agent takes more than 200 actions            
 
-        for i in range(episodes):
-            state = env.reset()[0]  # Initialize to state 0
-            terminated = False      # True when agent falls in hole or reached goal
-            truncated = False       # True when agent takes more than 200 actions            
+        #     # Agent navigates map until it falls into a hole (terminated), reaches goal (terminated), or has taken 200 actions (truncated).
+        #     while(not terminated and not truncated):  
+        #         # Select best action   
+        #         with torch.no_grad():
+        #             action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
 
-            # Agent navigates map until it falls into a hole (terminated), reaches goal (terminated), or has taken 200 actions (truncated).
-            while(not terminated and not truncated):  
-                # Select best action   
-                with torch.no_grad():
-                    action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
+        #         # Execute action
+        #         state,reward,terminated,truncated,_ = env.step(action)
 
-                # Execute action
-                state,reward,terminated,truncated,_ = env.step(action)
-        # state = env.reset()[0]
-        # for _ in range(200):
-        #     env.render()  
-        #     with torch.no_grad():
-        #         action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
-        #     state, reward, done, _, _ = env.step(action)
-
+        state = env.reset()[0]
+        for _ in range(episodes):
+            env.render()  
+            with torch.no_grad():
+                action = policy_dqn(self.state_to_dqn_input(state, num_states)).argmax().item()
+            state, reward, done, _, _ = env.step(action)
+            if done:
+            # state, _ = env.reset()
+                print("end!")
+                break
 
         env.close()
 
@@ -248,24 +249,24 @@ class DQN():
 
 if __name__ == '__main__':
     cartpole = DQN()
-    cartpole.train(1000)
-    # cartpole.test(1)
-    env = gym.make('CartPole-v1', render_mode='human')
-    num_states = env.observation_space.shape[0]
-    num_actions = env.action_space.n
+    # cartpole.train(1000)
+    cartpole.test(200)
+    # env = gym.make('CartPole-v1', render_mode='human')
+    # num_states = env.observation_space.shape[0]
+    # num_actions = env.action_space.n
 
-    # Load learned policy
-    policy_dqn = Net(in_states=num_states, h1_nodes=64,h2_nodes=32, out_actions=num_actions)
-    policy_dqn.load_state_dict(torch.load("DDPG\\cartpole_dql.pt"))
-    policy_dqn.eval()    # switch model to evaluation mode
+    # # Load learned policy
+    # policy_dqn = Net(in_states=num_states, h1_nodes=64,h2_nodes=32, out_actions=num_actions)
+    # policy_dqn.load_state_dict(torch.load("DDPG\\cartpole_dql.pt"))
+    # policy_dqn.eval()    # switch model to evaluation mode
 
-    state = env.reset()[0]
-    for _ in range(200):
-        env.render()  
-        with torch.no_grad():
-            action = policy_dqn(cartpole.state_to_dqn_input(state, num_states)).argmax().item()
-        state, reward, done, _, _ = env.step(action)
-        if done:
-            # state, _ = env.reset()
-            print("end!")
-            break
+    # state = env.reset()[0]
+    # for _ in range(200):
+    #     env.render()  
+    #     with torch.no_grad():
+    #         action = policy_dqn(cartpole.state_to_dqn_input(state, num_states)).argmax().item()
+    #     state, reward, done, _, _ = env.step(action)
+    #     if done:
+    #         # state, _ = env.reset()
+    #         print("end!")
+    #         break
