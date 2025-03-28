@@ -1,3 +1,6 @@
+
+### ERROR
+
 import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
@@ -34,9 +37,11 @@ class Critic(nn.Module):
         self.l3 = nn.Linear(256, 1)
 
     def forward(self, s, a):
-        x = F.relu(self.l1(torch.cat([s, a], 1)))
-        x = F.relu(self.l2(x))
-        x = self.l3(x)
+        x = torch.cat((s, a), dim=1)
+        x = F.relu(torch.nn.functional.linear (x, self.l1.weight.clone(), self.l1.bias))
+        x = F.relu(torch.nn.functional.linear (x, self.l2.weight.clone(), self.l2.bias))
+        # x = self.l3(x)
+        x = torch.nn.functional.linear (x, self.l3.weight.clone(), self.l3.bias)
 
         return x
 
@@ -59,12 +64,12 @@ class DDPG():
     def __init__(self):
         super(DDPG, self).__init__()
         # Hyperparameters (adjustable)
-        self.learning_rate_a = 0.01         # learning rate actor
-        self.learning_rate_c = 0.01         # learning rate critic
+        self.learning_rate_a = 0.001         # learning rate actor
+        self.learning_rate_c = 0.001         # learning rate critic
         self.discount_factor_g = 0.9         # discount rate (gamma)    
-        self.network_sync_rate = 100          # number of steps the agent takes before syncing the policy and target network
-        self.replay_memory_size = 2000       # size of replay memory
-        self.mini_batch_size = 32           # size of the training data set sampled from the replay memory
+        self.network_sync_rate = 10          # number of steps the agent takes before syncing the policy and target network
+        self.replay_memory_size = 10000       # size of replay memory
+        self.mini_batch_size = 128           # size of the training data set sampled from the replay memory
         self.exploration_noise = 0.1
 
         # Neural Network
@@ -143,17 +148,19 @@ class DDPG():
                 # return print(self.optimize(mini_batch, actor_ddpg,actor_target, critic_ddpg,critic_target))
 
                 # Copy policy network to target network after a certain number of steps
-                if step_count > self.network_sync_rate:
-                    actor_target.load_state_dict(actor_ddpg.state_dict())
-                    critic_target.load_state_dict(critic_ddpg.state_dict())
-                    step_count=0
+                actor_target.load_state_dict(actor_ddpg.state_dict())
+                critic_target.load_state_dict(critic_ddpg.state_dict())
+                # if step_count > self.network_sync_rate:
+                #     actor_target.load_state_dict(actor_ddpg.state_dict())
+                #     critic_target.load_state_dict(critic_ddpg.state_dict())
+                #     step_count=0
 
         # Close environment
         env.close()
 
         # Save policy
-        # torch.save(actor_ddpg.state_dict(), "DDPG\\pendulum_actor.pt")
-        # torch.save(critic_ddpg.state_dict(), "DDPG\\pendulum_critic.pt")
+        torch.save(actor_ddpg.state_dict(), "DDPG\\pendulum_actor2.pt")
+        torch.save(critic_ddpg.state_dict(), "DDPG\\pendulum_critic2.pt")
 
         # # Create new graph 
         # plt.figure(1)
@@ -186,9 +193,10 @@ class DDPG():
         current_Q = critic_ddpg(state,action)
         critic_loss = self.loss_fn(current_Q,target_Q)
         actor_loss = -critic_ddpg(state,actor_ddpg(state)).mean()
+        
         # return  actor_loss
 
-        # Optimize critic
+        # # Optimize critic
         self.optimizer_critic.zero_grad()
         critic_loss.backward()
         self.optimizer_critic.step()
@@ -220,17 +228,17 @@ class DDPG():
         # Create critic and target critic network
         critic_ddpg = Critic(state_dim,action_dim)
 
-        actor_ddpg.load_state_dict(torch.load("DDPG\\pendulum_actor.pt"))
+        actor_ddpg.load_state_dict(torch.load("DDPG\\pendulum_actor2.pt"))
         actor_ddpg.eval()    # switch model to evaluation mode
 
-        critic_ddpg.load_state_dict(torch.load("DDPG\\pendulum_critic.pt"))
+        critic_ddpg.load_state_dict(torch.load("DDPG\\pendulum_critic2.pt"))
         critic_ddpg.eval()    # switch model to evaluation mode
 
         state = env.reset()[0]
         for _ in range(episodes):
             env.render()  
             with torch.no_grad():
-                action = actor_ddpg(state)
+                action = self.select_action(actor_ddpg,state)
             state, reward, done, _, _ = env.step(action)
             if done:
             # state, _ = env.reset()
@@ -257,6 +265,7 @@ if __name__ == '__main__':
     # out = critic.forward(s,a)
     # print(out)
     pendulum = DDPG()
-    pendulum.train(100)
+    # pendulum.train(1000)
+    pendulum.test(200)
 
 
