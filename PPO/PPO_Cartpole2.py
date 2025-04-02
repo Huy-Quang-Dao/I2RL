@@ -14,8 +14,8 @@ class Actor(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(Actor, self).__init__()
         self.fc1 = nn.Linear(state_dim, 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.action_probs = nn.Linear(64, action_dim)
+        self.fc2 = nn.Linear(64, 128)
+        self.action_probs = nn.Linear(128, action_dim)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -29,8 +29,8 @@ class Critic(nn.Module):
     def __init__(self, state_dim):
         super(Critic, self).__init__()
         self.fc1 = nn.Linear(state_dim, 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, 1)
+        self.fc2 = nn.Linear(64, 128)
+        self.fc3 = nn.Linear(128, 1)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -62,17 +62,19 @@ class PPO():
         super(PPO, self).__init__()
         # Neural Network
         self.actor = Actor(state_dim, action_dim)
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=0.0001)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=0.001)
 
         self.critic = Critic(state_dim)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=0.0001)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=0.001)
 
         self.memory = Memory(200)
         self.memory_size = 200
-        self.discount_factor = 0.9                         
+        self.discount_factor = 0.98                         
         self.epoch = 25
         self.lamda = 0.95
         self.eps = 0.2
+        self.max_grad_norm = 0.5
+        self.batch_size = 32
 
     # Train the FrozeLake environment
     def train(self, episodes, render=False):
@@ -105,60 +107,57 @@ class PPO():
                 # Increment step counter
                 episode_reward = episode_reward + reward
 
-            self.optimize()
-            # return print(self.optimize())
-            self.memory.clear()
-            # print(len(self.memory))
-            reward_list.append(episode_reward)
-            print(f"Episode: {i+1}, Reward: {round(episode_reward, 3)}")
-    
+            if len(self.memory)>self.batch_size:
+                self.optimize()        
 
         # Close environment
         env.close()
 
         # Save policy
-        torch.save(self.actor.state_dict(), "PPO\\cartpole_actor.pt")
-        torch.save(self.critic.state_dict(), "PPO\\cartpole_critic.pt")
+        torch.save(self.actor.state_dict(), "PPO\\cartpole_actor2.pt")
+        torch.save(self.critic.state_dict(), "PPO\\cartpole_critic2.pt")
 
         # Create new graph 
         plt.figure(1)
         plt.plot(reward_list)
         
         # Save plots
-        plt.savefig("PPO\\cartpole_ppo.png")
+        plt.savefig("PPO\\cartpole_ppo2.png")
 
     # Optimize policy network
     def optimize(self):
-        states, actions, next_states, rewards, ends = zip(*self.memory.sample())
-        states = torch.FloatTensor(np.array(states))
-        actions = torch.FloatTensor(np.vstack(actions))
-        next_states = torch.FloatTensor(np.array(next_states))
-        rewards = torch.FloatTensor(rewards).unsqueeze(1)
-        ends = torch.FloatTensor(ends).unsqueeze(1)
+   
+        for _ in range(self.epoch):
+            mini_batches = random.sample(self.memory.sample(), self.batch_size)
 
-        # computing TD-error
-        target_val = self.critic(next_states)
-        v_target_val = rewards + self.discount_factor * target_val * (1 - ends)
-        v_val = self.critic(states)
-        td_error = v_target_val - v_val
+            states, actions, next_states, rewards, ends = zip(*mini_batches)
+            states = torch.FloatTensor(np.array(states))
+            actions = torch.LongTensor(np.array(actions))
+            next_states = torch.FloatTensor(np.array(next_states))
+            rewards = torch.FloatTensor(rewards).unsqueeze(1)
+            ends = torch.FloatTensor(ends).unsqueeze(1)
 
-        # advantages = torch.zeros_like(td_error)
-        # advantage = 0
-        # for i in reversed(range(len(td_error))):
-        #     advantage = td_error[i] + self.discount_factor * self.lamda * advantage * (1 - ends[i])
-        #     advantages[i] = advantage
+            # computing TD-error
+            target_val = self.critic(next_states)
+            v_target_val = rewards + self.discount_factor * target_val * (1 - ends)
+            v_val = self.critic(states)
+            td_error = v_target_val - v_val
 
-        advantages = torch.zeros_like(td_error)
-        advantages[-1] = td_error[-1]
-        for i in reversed(range(len(td_error)-1)):
-            advantages[i] = td_error[i] + self.discount_factor * self.lamda * advantages[i+1] * (1 - ends[i])
+            # advantages = torch.zeros_like(td_error)
+            # advantage = 0
+            # for i in reversed(range(len(td_error))):
+            #     advantage = td_error[i] + self.discount_factor * self.lamda * advantage * (1 - ends[i])
+            #     advantages[i] = advantage
 
-        action_probs = self.actor(states).detach()
-        old_distribution = torch.distributions.Categorical(probs=action_probs)
-        old_log_distribution = old_distribution.log_prob(actions)
+            advantages = torch.zeros_like(td_error)
+            advantages[-1] = td_error[-1]
+            for i in reversed(range(len(td_error)-1)):
+                advantages[i] = td_error[i] + self.discount_factor * self.lamda * advantages[i+1] * (1 - ends[i])
 
-        # train epoch times
-        for epoch_i in range(self.epoch):
+            action_probs = self.actor(states).detach()
+            old_distribution = torch.distributions.Categorical(probs=action_probs)
+            old_log_distribution = old_distribution.log_prob(actions)
+
             # computing new distribution
             action_probs = self.actor(states)
             new_distribution = torch.distributions.Categorical(probs=action_probs)
@@ -176,8 +175,12 @@ class PPO():
             self.critic_optimizer.zero_grad()
             actor_loss.backward()
             critic_loss.backward()
+            nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+            nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
             self.actor_optimizer.step()
             self.critic_optimizer.step()
+
+        self.memory.clear()
 
 
     def select_action(self, state):
@@ -209,10 +212,10 @@ class PPO():
         # Create critic and target critic network
         critic_ppo = Critic(state_dim)
 
-        actor_ppo.load_state_dict(torch.load("PPO\\cartpole_actor.pt"))
+        actor_ppo.load_state_dict(torch.load("PPO\\cartpole_actor2.pt"))
         actor_ppo.eval()    # switch model to evaluation mode
 
-        critic_ppo.load_state_dict(torch.load("PPO\\cartpole_critic.pt"))
+        critic_ppo.load_state_dict(torch.load("PPO\\cartpole_critic2.pt"))
         critic_ppo.eval()    # switch model to evaluation mode
 
         state = env.reset()[0]
@@ -237,7 +240,7 @@ if __name__ == '__main__':
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.n
     cartpole = PPO(state_dim,action_dim)
-    cartpole.train(1000)
+    cartpole.train(500)
     # cartpole.test(200)
 
 
